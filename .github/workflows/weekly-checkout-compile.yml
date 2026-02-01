@@ -35,6 +35,7 @@ jobs:
         PRE_REBASE_SHA=$(git rev-parse HEAD)
         
         git rebase fork_remote main
+        git pull origin main --rebase
         
         POST_REBASE_SHA=$(git rev-parse HEAD)
         
@@ -50,7 +51,6 @@ jobs:
     - name: Push Updated History
       if: steps.rebase_sync.outputs.changed == 'true'
       run: |
-        git pull origin main --rebase
         git push origin main
         
     - name: Patch .NET Target Version
