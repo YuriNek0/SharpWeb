@@ -1,0 +1,98 @@
+name: .NET Framework 4.8 Build
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+    - name: Manual Clone Repository
+      shell: bash
+      run: |
+        # Use the GITHUB_TOKEN for authentication
+        git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+    - name: Get current date
+      id: date
+      shell: bash
+      run: echo "date=$(date +'%Y-%m-%d_%H%M')" >> $GITHUB_OUTPUT
+
+    - name: Add remote repository
+      run: |
+        git remote add fork_remote https://github.com/StarfireLab/SharpWeb.git
+        
+    - name: Fetch branches from the fork remote
+      run: git fetch fork_remote
+
+    - name: Sync with Rebase
+      id: rebase_sync
+      run: |
+        PRE_REBASE_SHA=$(git rev-parse HEAD)
+        
+        git rebase fork_remote main
+        
+        POST_REBASE_SHA=$(git rev-parse HEAD)
+        
+        if [ "$PRE_REBASE_SHA" == "$POST_REBASE_SHA" ]; then
+          echo "No new commits after rebase."
+          echo "changed=false" >> $GITHUB_OUTPUT
+        else
+          echo "Rebase successful, history updated."
+          echo "changed=true" >> $GITHUB_OUTPUT
+        fi
+      shell: bash
+
+    - name: Push Updated History
+      if: steps.rebase_sync.outputs.changed == 'true'
+      run: |
+        git pull origin main --rebase
+        git push origin main
+        
+    - name: Patch .NET Target Version
+      run: sed -iE 's/<TargetFrameworkVersion>v4.0<\/TargetFrameworkVersion>/<TargetFrameworkVersion>v4.8<\/TargetFrameworkVersion>/' ./SharpWeb/SharpWeb.csproj
+      if: steps.rebase_sync.outputs.changed == 'true'
+      shell: bash
+
+    - name: Install DNF 4.8 packs
+      shell: pwsh
+      if: steps.rebase_sync.outputs.changed == 'true'
+      working-directory: "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer"
+      run: |
+        $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+        $WorkLoads = '--add Microsoft.Net.Component.4.8.SDK --add Microsoft.Net.Component.4.8.TargetingPack --add Microsoft.Net.ComponentGroup.4.8.DeveloperTools'
+        $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $WorkLoads, $WorkLoads, '--quiet', '--norestart', '--nocache')
+        $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.1
+      if: steps.rebase_sync.outputs.changed == 'true'
+      
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v1.0.6
+      if: steps.rebase_sync.outputs.changed == 'true'
+      
+    - name: Restore NuGet packages
+      run: nuget restore SharpWeb.sln
+      if: steps.rebase_sync.outputs.changed == 'true'
+      
+    - name: Build Solution
+      run: msbuild.exe SharpWeb.sln /p:Configuration=Release /p:Platform="Any CPU"
+      if: steps.rebase_sync.outputs.changed == 'true'
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      if: steps.rebase_sync.outputs.changed == 'true'
+      with:
+        tag_name: build-${{ steps.date.outputs.date }}
+        name: Build ${{ steps.date.outputs.date }}
+        body: |
+          Automated build from StarfireLab/SharpWeb fork.
+          Build Date: ${{ steps.date.outputs.date }}
+        files: |
+          ./SharpWeb/bin/Release/SharpWeb.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
