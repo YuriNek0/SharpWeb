@@ -1,3 +1,9 @@
+# About this repository
+
+This repository is a fork of [StarfireLab/SharpWeb](https://github.com/starfirelab/sharpweb). It added a CI workflow to automatically build artifacts and add it to github release.
+
+The latest Windows version shipped with .NET Framework 4.8. The released artifact will be built on that version instead of the original v4.0.
+
 # SharpWeb
 
 `SharpWeb` 是一个浏览器数据（密码|历史记录|Cookie|书签|下载记录）的导出工具，支持主流浏览器。
