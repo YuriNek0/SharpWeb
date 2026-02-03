@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '0 0 * * 0'
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Skip version check and publish release
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   build:
@@ -17,6 +23,7 @@ jobs:
         git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
+
     - name: Get current date
       id: date
       shell: bash
@@ -49,43 +56,65 @@ jobs:
       shell: bash
 
     - name: Push Updated History
-      if: steps.rebase_sync.outputs.changed == 'true'
+      if: ${{ steps.rebase_sync.outputs.changed == 'true' || github.event.inputs.publish == 'true' }}
       run: |
         git push origin main
         
     - name: Patch .NET Target Version
-      run: sed -iE 's/<TargetFrameworkVersion>v4.0<\/TargetFrameworkVersion>/<TargetFrameworkVersion>v4.8<\/TargetFrameworkVersion>/' ./SharpWeb/SharpWeb.csproj
-      if: steps.rebase_sync.outputs.changed == 'true'
+      run: sed -i 's/<TargetFrameworkVersion>v4.0<\/TargetFrameworkVersion>/<TargetFrameworkVersion>v4.8<\/TargetFrameworkVersion>/' ./SharpWeb/SharpWeb.csproj
+      if: ${{ steps.rebase_sync.outputs.changed == 'true' || github.event.inputs.publish == 'true' }}
+      shell: bash
+
+    - name: Patch .csproj to enable obfuscar
+      run: |
+        sed -i 's|</Project>||' ./SharpWeb/SharpWeb.csproj
+        sed -i '$r obfuscar-template.patch' ./SharpWeb/SharpWeb.csproj
+        sed -i '$a </Project>' ./SharpWeb/SharpWeb.csproj
+      if: ${{ steps.rebase_sync.outputs.changed == 'true' || github.event.inputs.publish == 'true' }}
       shell: bash
 
     - name: Install DNF 4.8 packs
       shell: pwsh
-      if: steps.rebase_sync.outputs.changed == 'true'
+      if: ${{ steps.rebase_sync.outputs.changed == 'true' || github.event.inputs.publish == 'true' }}
       working-directory: "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer"
       run: |
         $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
         $WorkLoads = '--add Microsoft.Net.Component.4.8.SDK --add Microsoft.Net.Component.4.8.TargetingPack --add Microsoft.Net.ComponentGroup.4.8.DeveloperTools'
         $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $WorkLoads, $WorkLoads, '--quiet', '--norestart', '--nocache')
         $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v1.1
-      if: steps.rebase_sync.outputs.changed == 'true'
+      if: ${{ steps.rebase_sync.outputs.changed == 'true' || github.event.inputs.publish == 'true' }}
       
     - name: Setup NuGet
-      uses: NuGet/setup-nuget@v1.0.6
-      if: steps.rebase_sync.outputs.changed == 'true'
+      uses: NuGet/setup-nuget@v2
+      if: ${{ steps.rebase_sync.outputs.changed == 'true' || github.event.inputs.publish == 'true' }}
       
     - name: Restore NuGet packages
       run: nuget restore SharpWeb.sln
-      if: steps.rebase_sync.outputs.changed == 'true'
+      if: ${{ steps.rebase_sync.outputs.changed == 'true' || github.event.inputs.publish == 'true' }}
       
     - name: Build Solution
-      run: msbuild.exe SharpWeb.sln /p:Configuration=Release /p:Platform="Any CPU"
-      if: steps.rebase_sync.outputs.changed == 'true'
+      run: msbuild.exe SharpWeb.sln /p:Configuration=Release /p:Platform="Any CPU" /p:DebugSymbols=false /p:DebugType=None
+      if: ${{ steps.rebase_sync.outputs.changed == 'true' || github.event.inputs.publish == 'true' }}
+
+    - name: Obfuscator Log
+      run: find . -name "obfuscar.log" -exec cat {} +
+      if: ${{ steps.rebase_sync.outputs.changed == 'true' || github.event.inputs.publish == 'true' }}
+      shell: bash
+
+    - name: Moving Artifacts
+      run: |
+        mkdir -p ./Artifacts
+        mv ./SharpWeb/bin/Release/SharpWeb.exe ./Artifacts/SharpWeb-NoObfs.exe
+        mv ./SharpWeb/bin/Release/Obfuscator_Output/SharpWeb.exe ./Artifacts/SharpWeb.exe
+      if: ${{ steps.rebase_sync.outputs.changed == 'true' || github.event.inputs.publish == 'true' }}
+      shell: bash
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
-      if: steps.rebase_sync.outputs.changed == 'true'
+      if: ${{ steps.rebase_sync.outputs.changed == 'true' || github.event.inputs.publish == 'true' }}
       with:
         tag_name: build-${{ steps.date.outputs.date }}
         name: Build ${{ steps.date.outputs.date }}
@@ -93,6 +122,6 @@ jobs:
           Automated build from StarfireLab/SharpWeb fork.
           Build Date: ${{ steps.date.outputs.date }}
         files: |
-          ./SharpWeb/bin/Release/SharpWeb.exe
+          ./Artifacts/*.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

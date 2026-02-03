@@ -1,0 +1,35 @@
+<ItemGroup>
+  <PackageReference Include="Obfuscar" Version="*" GeneratePathProperty="true">
+    <PrivateAssets>all</PrivateAssets>
+    <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+  </PackageReference>
+</ItemGroup>
+
+<Target Name="GenerateObfuscarConfig" BeforeTargets="Obfuscate">
+  <PropertyGroup>
+    <_InPath>$(TargetDir)</_InPath>
+    <_OutPath>$(_InPath)Obfuscator_Output</_OutPath>
+    <_ConfigFile>$(TargetDir)obfuscar.generated.xml</_ConfigFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <_ObfuscarLines Include="&lt;Obfuscator&gt;" />
+    <_ObfuscarLines Include="  &lt;Var name='InPath' value='$(_InPath)' /&gt;" />
+    <_ObfuscarLines Include="  &lt;Var name='OutPath' value='$(_OutPath)' /&gt;" />
+    <_ObfuscarLines Include="  &lt;Var name='HidePrivateApi' value='true' /&gt;" />
+    <_ObfuscarLines Include="  &lt;Var name='HideStrings' value='true' /&gt;" />
+    <_ObfuscarLines Include="  &lt;Var name='LogFile' value='obfuscar.log' /&gt;" />
+    <!-- <_ObfuscarLines Include="  &lt;Var name='KeyFile' value='$(ProjectDir)test.snk' /&gt;" /> -->
+    <_ObfuscarLines Include="  &lt;Module file='$(_InPath)$(TargetFileName)' /&gt;" />
+    <_ObfuscarLines Include="&lt;/Obfuscator&gt;" />
+  </ItemGroup>
+
+  <WriteLinesToFile File="$(_ConfigFile)" Overwrite="true" Lines="@(_ObfuscarLines)" />
+</Target>
+
+<Target Name="Obfuscate" AfterTargets="AfterBuild" Condition="'$(Configuration)' == 'Release'">
+  <PropertyGroup>
+    <ObfuscarToolPath>$(PkgObfuscar)/tools/Obfuscar.Console.exe</ObfuscarToolPath>
+  </PropertyGroup>
+  <Exec Command="&quot;$(ObfuscarToolPath)&quot; &quot;$(TargetDir)obfuscar.generated.xml&quot;" />
+</Target>

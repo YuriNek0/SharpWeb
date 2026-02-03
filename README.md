@@ -2,6 +2,8 @@
 
 This repository is a fork of [StarfireLab/SharpWeb](https://github.com/starfirelab/sharpweb). It added a CI workflow to automatically build artifacts and add it to github release.
 
+The released binary `SharpWeb.exe` is obfuscated using [Obfuscar](https://github.com/obfuscar/obfuscar). The original binary file is named `SharpWeb-NoObfs.exe`.
+
 The latest Windows version shipped with .NET Framework 4.8. The released artifact will be built on that version instead of the original v4.0.
 
 # SharpWeb
